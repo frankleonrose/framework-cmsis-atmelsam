@@ -1,0 +1,6 @@
+{
+    "description": "Vendor-independent hardware abstraction layer for the Cortex-M processor series",
+    "name": "framework-cmsis",
+    "url": "http://www.arm.com/products/processors/cortex-m/cortex-microcontroller-software-interface-standard.php",
+    "version": "2.50400.181126"
+}
