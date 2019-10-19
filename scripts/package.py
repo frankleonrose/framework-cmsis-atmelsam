@@ -7,6 +7,9 @@ import tempfile
 import functools
 import glob, shutil
 
+WORK_DIR = '.downloads'
+LD_SCRIPT_DIR = "platformio/ldscripts/atmelsam"
+
 def download(url, filename):
     r = requests.get(url, allow_redirects=True)
     open(filename, 'wb').write(r.content)
@@ -28,13 +31,6 @@ class PackParser(HTMLParser):
                     self.packs.append(pack)
             except:
                 pass
-                # print('Failed on: ', attrs)
-
-    # def handle_endtag(self, tag):
-        # print("Encountered an end tag :", tag)
-
-    # def handle_data(self, data):
-        # print("Encountered some data  :", data)
 
 def read_packs():
     response = requests.get('http://packs.download.atmel.com/')
@@ -70,29 +66,32 @@ def enrich_packs(packs):
         return packs
     return functools.reduce(enricher, packs, {})
 
-WORK_DIR = '.downloads'
-LD_SCRIPT_DIR = "platformio/ldscripts/atmelsam"
-
 def move_files(pack_family, src_dir):
     print(f"Moving files for: {pack_family}")
-    variants = "variants/atmelsam"
-    family_dir = f"{variants}/{pack_family}"
-    try:
-        os.makedirs(family_dir)
-    except:
-        pass
-    dst = f"{family_dir}/include"
+    family_dir = os.path.join('variants', 'atmelsam', pack_family)
+    os.makedirs(family_dir, exist_ok=True)
+
+    dst = os.path.join(family_dir, 'include')
     shutil.rmtree(dst, ignore_errors=True)
-    os.rename(f"{src_dir}/include", dst)
-    dst = f"{family_dir}/gcc"
-    shutil.rmtree(dst, ignore_errors=True)
-    os.rename(f"{src_dir}/gcc", dst)
-    ld_glob = f"{dst}/gcc/*.ld"
-    for file in glob.glob(ld_glob):
+    os.rename(os.path.join(src_dir, 'include'), dst)
+
+    dst_source = os.path.join(family_dir, 'gcc')
+    shutil.rmtree(dst_source, ignore_errors=True)
+    os.makedirs(dst_source, exist_ok=True)
+    for file in glob.glob(os.path.join(src_dir, 'gcc', '*.c')):
+        shutil.move(file, dst_source)
+    for file in glob.glob(os.path.join(src_dir, 'gcc', 'gcc', '*.c')):
+        shutil.move(file, dst_source)
+
+    for file in glob.glob(os.path.join(src_dir, 'gcc', '*.ld')):
+        dst_name = os.path.join(LD_SCRIPT_DIR, os.path.basename(file))
+        shutil.move(file, dst_name)
+    for file in glob.glob(os.path.join(src_dir, 'gcc', 'gcc', '*.ld')):
         dst_name = os.path.join(LD_SCRIPT_DIR, os.path.basename(file))
         shutil.move(file, dst_name)
 
 def move_files_for_packs(pack_family, src_dir):
+    "Handle some packs which have multiple families in subdirs and others with just one."
     count = 0
     for family_dir in glob.glob(f"{src_dir}/sam*"):
         family_name = os.path.basename(family_dir)
