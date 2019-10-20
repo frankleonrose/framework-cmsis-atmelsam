@@ -83,26 +83,33 @@ def move_files(pack_family, src_dir):
     for file in glob.glob(os.path.join(src_dir, 'gcc', 'gcc', '*.c')):
         shutil.move(file, dst_source)
 
+    variants = []
     for file in glob.glob(os.path.join(src_dir, 'gcc', '*.ld')):
         dst_name = os.path.join(LD_SCRIPT_DIR, os.path.basename(file))
         shutil.move(file, dst_name)
+        if "_flash" in file:
+            variants.append(os.path.basename(file).replace('_flash.ld', ''))
     for file in glob.glob(os.path.join(src_dir, 'gcc', 'gcc', '*.ld')):
         dst_name = os.path.join(LD_SCRIPT_DIR, os.path.basename(file))
         shutil.move(file, dst_name)
+        if "_flash" in file:
+            variants.append(os.path.basename(file).replace('_flash.ld', ''))
+    return variants
 
 def move_files_for_packs(pack_family, src_dir):
     "Handle some packs which have multiple families in subdirs and others with just one."
-    count = 0
+    family_variants = {}
     for family_dir in glob.glob(f"{src_dir}/sam*"):
         family_name = os.path.basename(family_dir)
-        move_files(family_name, family_dir)
-        count = count + 1
+        family_variants[family_name] = move_files(family_name, family_dir)
     for family_dir in glob.glob(f"{src_dir}/ic.sam*"):
         family_name = os.path.basename(family_dir)[3:]
-        move_files(family_name, family_dir)
-        count = count + 1
-    if count==0:
-        move_files(pack_family.lower(), src_dir)
+        family_variants[family_name] = move_files(family_name, family_dir)
+    if len(family_variants)==0:
+        family_name = pack_family.lower()
+        family_variants[family_name] = move_files(family_name, src_dir)
+    # print(family_variants)
+    return family_variants
 
 def process_pack(pack, download_dir, temp_dir):
     print("Processing pack: ", pack['name'])
@@ -113,7 +120,17 @@ def process_pack(pack, download_dir, temp_dir):
 
     pack_dir = os.path.join(temp_dir, pack['name'])
     unzip(filename, pack_dir)
-    move_files_for_packs(pack['family'], pack_dir)
+    return move_files_for_packs(pack['family'], pack_dir)
+
+def invert_variants(family_variants):
+    variant_to_family = {}
+    for f, mcu_list in family_variants.items():
+      for mcu in mcu_list:
+        if mcu in variant_to_family:
+          print("MCU '%s' appears in multiple families"  % mcu)
+        variant_to_family[mcu] = f
+
+    return variant_to_family
 
 def package_atmelsam():
     os.makedirs(LD_SCRIPT_DIR, exist_ok=True)
@@ -125,11 +142,14 @@ def package_atmelsam():
     epacks = enrich_packs(packs)
     print(f"Processing {len(epacks)} packs...")
 
+    family_variants = {}
     with tempfile.TemporaryDirectory() as temp_directory:
         # temp_directory = ".temporary"
         # os.makedirs(temp_directory, exist_ok=True)
         for family, pack in epacks.items():
-            process_pack(pack, WORK_DIR, temp_directory)
+            variants = process_pack(pack, WORK_DIR, temp_directory)
+            family_variants.update(variants)
+    print("Variant to family map (used in platform-atmelsam/builder/frameworks/cmsis.py):", invert_variants(family_variants))
 
 if __name__=='__main__':
     package_atmelsam()
